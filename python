@@ -1,0 +1,67 @@
+import os
+from nltk.tokenize import sent_tokenize, word_tokenize
+from nltk.corpus import stopwords
+from nltk.probability import FreqDist
+from nltk.tokenize import RegexpTokenizer
+from nltk.cluster.util import cosine_distance
+import numpy as np
+import networkx as nx
+
+def read_email(file_path):
+    with open(file_path, 'r', encoding='utf-8') as file:
+        return file.read()
+
+def preprocess_text(text):
+    # Tokenize text into words
+    words = word_tokenize(text.lower())
+    
+    # Remove stop words and punctuation
+    stop_words = set(stopwords.words("english"))
+    words = [word for word in words if word not in stop_words and word.isalnum()]
+    
+    return words
+
+def sentence_similarity(sent1, sent2):
+    words1 = set(sent1)
+    words2 = set(sent2)
+    return len(words1.intersection(words2)) / (np.log10(len(words1)) + np.log10(len(words2)) + 1)
+
+def build_similarity_matrix(sentences):
+    similarity_matrix = np.zeros((len(sentences), len(sentences)))
+    for i in range(len(sentences)):
+        for j in range(len(sentences)):
+            if i != j:
+                similarity_matrix[i][j] = sentence_similarity(sentences[i], sentences[j])
+    return similarity_matrix
+
+def generate_summary(text, num_sentences=3):
+    sentences = sent_tokenize(text)
+    preprocessed_sentences = [preprocess_text(sentence) for sentence in sentences]
+    sentence_similarity_matrix = build_similarity_matrix(preprocessed_sentences)
+    
+    sentence_similarity_graph = nx.from_numpy_array(sentence_similarity_matrix)
+    scores = nx.pagerank(sentence_similarity_graph)
+    
+    ranked_sentences = sorted(((scores[i], sentence) for i, sentence in enumerate(sentences)), reverse=True)
+    
+    summary = [sentence for score, sentence in ranked_sentences[:num_sentences]]
+    
+    return ' '.join(summary)
+
+def summarize_emails(emails_dir, output_dir, num_sentences=3):
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    
+    for file_name in os.listdir(emails_dir):
+        if file_name.endswith('.txt'):
+            file_path = os.path.join(emails_dir, file_name)
+            email_content = read_email(file_path)
+            summary = generate_summary(email_content, num_sentences)
+            output_path = os.path.join(output_dir, f"{file_name.split('.')[0]}_summary.txt")
+            with open(output_path, 'w', encoding='utf-8') as summary_file:
+                summary_file.write(summary)
+
+# Example usage:
+emails_directory = "path/to/your/emails"
+output_directory = "path/to/save/summaries"
+summarize_emails(emails_directory, output_directory)
